@@ -1,0 +1,16 @@
+* {
+	margin: 0;
+	padding: 0;
+	box-sizing: border-box;
+}
+
+.container {
+	font-size: 16px;
+	display: flex;
+	gap: 3rem;
+}
+
+.totem {
+	display: flex;
+	border: 1px solid black;
+}
