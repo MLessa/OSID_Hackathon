@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Dashboard</title>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no" />
+  <script type="text/javascript" src="https://code.jquery.com/jquery-2.1.1.min.js"></script>
+</head>
+
+<body>
+  <h1>Dashboard</h1>
+
+  <div>
+    <h3>Vincular novo totem</h3>
+    <input type="text" placeholder="localização do totem" id="totemLocation" />
+    <button onclick="linkTotem()">Vincular</button>
+  </div>
+  ==================================================
+  <div>
+    <h3>Totens operando</h3>
+    <ul id="totemList"></ul>
+  </div>
+  ===================================================
+  <div>
+    <h3>Visitantes identificados hoje</h3>
+    quantidade: <span id="visitorNumber">0</span>
+    <br />
+    dados:
+    <ul id="visitorData">
+
+    </ul>
+  </div>
+  ===================================================
+  <div>
+    <p>Registro de visitações</p>
+    <div id="heatMap">
+
+    </div>
+  </div>
+
+  <script>
+
+    $(document).ready(function () {
+      listTotens();
+
+      var fillVisitors = async _ => {
+        var visitors = await getVisitors();
+        $("#visitorData").empty();
+        if (visitors?.length ?? 0 > 0) {
+          $("#visitorNumber").text(visitors.length);
+          visitors.forEach(v => {
+            $("#visitorData").append(
+              `<li><p>Nome: ${v.name} </p><p>Data e hora de registro: ${new Date(v.registerDate)} </p></li>`
+            );
+          })
+        }
+      };
+
+      const interval = setInterval(async function () {
+        const totens = await getTotens();
+        totens.forEach(totem => {
+          $(`#realtime_${totem.totem_id}`).text(totem.visitingCount);
+        });
+        fillVisitors();
+        loadHeatMap();
+      }, 1000);
+    });
+
+    getVisitors = async _ => {
+      const res = await fetch("listVisitors", {
+        method: "get",
+        headers: {
+          "content-type": "application/json",
+        },
+      });
+      return JSON.parse(await res.text());
+    }
+
+    linkTotem = async _ => {
+      const location = $("#totemLocation").val();
+      const res = await fetch("createTotem", {
+        method: "post",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ location }),
+      });
+
+      if (res.ok) {
+        const totem = JSON.parse(await res.text());
+        $("#totemList").append(
+          `<li><a href="${totem.url}" target="_blank"><span>Localização: ${totem.location}</span></a></li>`
+        );
+      }
+    };
+
+
+    getTotens = async _ => {
+      const res = await fetch("listTotens", {
+        method: "get",
+        headers: {
+          "content-type": "application/json",
+        },
+      });
+      if (res.ok) {
+        return JSON.parse(await res.text());
+      }
+      return [];
+    }
+
+    listTotens = async _ => {
+      const totens = await getTotens();
+      if (totens && totens.length > 0) {
+        totens.forEach((totem) => {
+          $("#totemList").append(
+            `<li><a href="http://localhost:3000/tracker?totemId=${totem.totem_id}" target="_blank"><span>Localização: ${totem.location}</span> </a><span>Visitantes em tempo real: <span id='realtime_${totem.totem_id}'></span></span></li>`
+          );
+        });
+      }
+    };
+
+    loadHeatMap = async _ => {
+      const res = await fetch("getHeatMap", {
+        method: "get",
+        headers: {
+          "content-type": "application/json",
+        },
+      });
+      let rows = JSON.parse(await res.text());
+
+      let tableHtml = '<table>';
+      tableHtml += '<tr><th>Localização</th><th>Visitante</th><th>Data</th></tr>';
+
+      rows.forEach((row) => {
+        const location = row.location;
+        const name = row.name;
+        const date = row.date;
+        tableHtml += `<tr><td>${location}</td><td>${name}</td><td>${new Date(date)}</td></tr>`;
+      });
+
+      tableHtml += '</table>';
+
+      const heatMapDiv = document.getElementById('heatMap');
+      heatMapDiv.innerHTML = tableHtml;
+    }
+
+
+  </script>
+</body>
+
+</html>

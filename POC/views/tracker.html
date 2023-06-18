@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <script src="js/face-api.js"></script>
+  <script src="js/commons.js"></script>
+  <script src="js/faceDetectionControls.js"></script>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/0.100.2/css/materialize.css">
+  <script type="text/javascript" src="https://code.jquery.com/jquery-2.1.1.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/0.100.2/js/materialize.min.js"></script>
+  <!-- <meta http-equiv="refresh" content="30"> -->
+</head>
+
+<body>
+  <div class="center-content page-container">
+
+    <div class="progress" id="loader">
+      <div class="indeterminate"></div>
+    </div>
+    <h3 id="locationInfo" style="display: none;">Visão da(o) <span id="location"></span>  </h3>
+    <div style="position: relative" class="margin">
+      <video onloadedmetadata="onPlay(this)" id="inputVideo" autoplay muted playsinline></video>
+      <canvas id="overlay" />
+    </div>
+    <div>
+      <h2 id="peopleInfo" style="display: none;">Pessoas no ambiente: <span id="peopleCount"></span>
+      </h2>
+      <h2 id="appLoading">Carregando visualização</h2>
+    </div>
+    <h3 id="selfieInfo" style="display: none;">De um sorriso pra OSID! Clique <a id="selfieAnchor">aqui</a>! </h3>
+
+</body>
+
+<script>
+
+  var labeledFaceDescriptors = null, faceMatcher = null, visitors = null;
+
+  async function getLabeledFaceDescriptions() {
+    const res = await fetch("listVisitors", {
+      method: "get",
+      headers: {
+        "content-type": "application/json",
+      },
+    });
+
+    if (res.ok) {
+      visitors = JSON.parse(await res.text());
+      if (visitors.length == 0) {
+        // Dulce is always visiting...
+        visitors.push({ visitor_id: "dulce", name: "Dulce" });
+      }
+
+      return Promise.all(
+        visitors.map(async (visitor) => {
+          const descriptions = [];
+          const img = await faceapi.fetchImage(`/selfies/${visitor.visitor_id}.png`);
+          const detections = await faceapi
+            .detectSingleFace(img)
+            .withFaceLandmarks()
+            .withFaceDescriptor();
+          if (detections)
+            descriptions.push(detections.descriptor);
+          return new faceapi.LabeledFaceDescriptors(`${visitor.name} - ${visitor.visitor_id}`, descriptions);
+        })
+      );
+    }
+  }
+
+  async function onPlay() {
+    $("#appLoading").hide();
+
+    const videoEl = $('#inputVideo').get(0)
+
+    if (videoEl.paused || videoEl.ended || !isFaceDetectionModelLoaded())
+      return setTimeout(() => onPlay())
+
+    const result = await faceapi
+      .detectAllFaces(videoEl, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
+      .withFaceLandmarks()
+      .withFaceDescriptors()
+
+    if (result) {
+
+      await fetch("updateVisitorMap", {
+        method: "post",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ totemId: getTotemID(), visitingCount: result.length }),
+      });
+
+      $("#peopleCount").html(result.length);
+      $("#peopleInfo").show();
+      $("#selfieInfo").show();
+      $("#locationInfo").show();
+      const canvas = $('#overlay').get(0)
+      const dims = faceapi.matchDimensions(canvas, videoEl, true)
+      const displaySize = { width: videoEl.width, height: videoEl.height }
+      const resizedDetections = faceapi.resizeResults(result, dims)
+
+      const results = resizedDetections.map((d) => {
+        return faceMatcher.findBestMatch(d.descriptor);
+      });
+
+      results.forEach((result, i) => {
+        const box = resizedDetections[i].detection.box;
+        if (result._label === "unknown")
+          result._label = `visitante`
+        else {
+          let visitorId = result._label.split('-')[1].trim();
+          trackVisitor(visitorId);
+        }
+        const drawBox = new faceapi.draw.DrawBox(box, {
+          label: result,
+        });
+        drawBox.draw(canvas);
+      });
+    }
+
+    setTimeout(() => onPlay())
+  }
+
+  getTotemID = _ => {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('totemId');
+  }
+
+  trackVisitor = async (visitorId) => {
+    const totemId = getTotemID();
+
+    if (totemId) {
+      const res = await fetch("trackVisitor", {
+        method: "post",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ totemId, visitorId }),
+      });
+    }
+  };
+
+  async function run() {
+    // load face detection model
+    await faceapi.loadFaceLandmarkModel('/')
+    await faceapi.loadFaceRecognitionModel('/')
+    await changeFaceDetector(SSD_MOBILENETV1)
+    changeInputSize(608)
+    labeledFaceDescriptors = await getLabeledFaceDescriptions();
+    faceMatcher = new faceapi.FaceMatcher(labeledFaceDescriptors);
+
+    const stream = await navigator.mediaDevices.getUserMedia({ video: {} })
+    const videoEl = $('#inputVideo').get(0)
+    videoEl.srcObject = stream
+  }
+
+  setTotemDescription = async _ => {
+    const res = await fetch("getTotemById", {
+      method: "post",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ totemId: getTotemID() }),
+    });
+    let row = JSON.parse(await res.text());
+
+    if (row && row.length == 1) {
+      $("#location").text(row[0].location);
+    }
+
+  }
+
+  $(document).ready(function () {
+    initFaceDetectionControls()
+    run()
+    $("#selfieAnchor").attr("href", `http://localhost:3000/selfie?returnURL=${encodeURIComponent(window.location)}`)
+    setTotemDescription();
+  })
+</script>
+</body>
+
+</html>

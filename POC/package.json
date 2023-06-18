@@ -1,0 +1,14 @@
+{
+  "scripts": {
+    "start": "node server.js"
+  },
+  "author": "justadudewhohacks",
+  "license": "MIT",
+  "dependencies": {
+    "body-parser": "^1.20.2",
+    "express": "^4.17.1",
+    "face-api.js": "^0.22.2",
+    "request": "^2.88.2",
+    "sqlite3": "^5.1.6"
+  }
+}
