@@ -1,4 +1,4 @@
-# OSID_Hackathon
+# OSID_Hackathon - Equipe eKeep
 <br/>
 Para executar o aplicativo de coleta passiva de dados:
 <br/>
